@@ -1,0 +1,148 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id    String @id @default(cuid())
+    email String @unique
+
+    googleData  Json?   @default("{}")
+    googleImage String? @default("")
+
+    twitchData  Json?   @default("{}")
+    twitchImage String? @default("")
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Streamer {
+    id        String   @id
+    username  String   @unique
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    profileImage  String?
+    profileBanner String?
+    profileColor  String?
+
+    settings StreamerSettings?
+    token    StreamerToken?
+
+    donations   Donation[]
+    addresses   StreamerAddress[]
+    balances    StreamerBalance[]
+    withdrawals StreamerWithdrawal[]
+}
+
+// Used to access the streamers donation events
+model StreamerToken {
+    streamerId String   @id @unique
+    streamer   Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+    id         String   @default(cuid())
+    token      String   @default(uuid())
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+}
+
+model StreamerSettings {
+    streamerId            String   @id @unique
+    streamer              Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+    id                    String   @default(cuid())
+    playNotificationSound Boolean  @default(true)
+    animationType         String   @default("default")
+    animationParams       Json     @default("{}")
+}
+
+enum Currency {
+    SOL
+}
+
+enum DonationStatus {
+    PENDING
+    COMPLETED
+    FAILED
+}
+
+model Donation {
+    id                          String         @id @default(cuid())
+    amount                      Int
+    amountFloat                 Float
+    // amountAtomic is the amount in lamports, wei for ETH, satoshi for BTC, etc.
+    amountAtomic                Int
+    amountUsd                   Int
+    currency                    Currency
+    message                     String?
+    name                        String?
+    status                      DonationStatus @default(PENDING)
+    createdAt                   DateTime       @default(now())
+    updatedAt                   DateTime       @updatedAt
+    pendingUntil                DateTime
+    streamerId                  String
+    streamer                    Streamer       @relation(fields: [streamerId], references: [id])
+    addressId                   String
+    address                     Address        @relation(fields: [addressId], references: [id])
+    transactionHash             String?
+    transactionSender           String?
+    transactionSenderDomainName String?
+}
+
+model Address {
+    id          String     @id @default(cuid())
+    index       Int        @default(autoincrement())
+    address     String     @unique
+    currency    Currency
+    lockedUntil DateTime?
+    donations   Donation[]
+}
+
+model StreamerAddress {
+    id         String   @id @default(cuid())
+    address    String
+    currency   Currency
+    streamerId String
+    streamer   Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+    createdAt  DateTime @default(now())
+}
+
+model StreamerBalance {
+    id         String   @id @default(cuid())
+    streamerId String
+    streamer   Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+    balance    Float    @default(0)
+    pending    Float    @default(0)
+    currency   Currency
+    updatedAt  DateTime @updatedAt
+
+    @@unique([streamerId, currency])
+}
+
+enum StreamerWithdrawalStatus {
+    PENDING
+    SENT
+    COMPLETED
+    FAILED
+}
+
+model StreamerWithdrawal {
+    id              String                   @id @default(cuid())
+    amount          Float
+    amountAtomic    Int
+    amountFloat     Float
+    address         String
+    currency        Currency
+    status          StreamerWithdrawalStatus @default(PENDING)
+    streamerId      String
+    streamer        Streamer                 @relation(fields: [streamerId], references: [id])
+    createdAt       DateTime                 @default(now())
+    updatedAt       DateTime                 @updatedAt
+    transactionHash String?
+}
