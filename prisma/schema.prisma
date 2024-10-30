@@ -64,6 +64,7 @@ model StreamerSettings {
 
 enum Currency {
     SOL
+    SUI
 }
 
 enum DonationStatus {

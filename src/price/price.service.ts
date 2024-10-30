@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-type Crypto = 'SOL' | 'BTC' | 'ETH' | 'USDC';
+type Crypto = 'SOL' | 'SUI' | 'BTC' | 'ETH' | 'USDC';
 type Pair = 'USDT';
 
 const CACHE_DURATION_MINS = 5;
@@ -43,4 +43,9 @@ export class PriceService {
   async getEthereumPrice(): Promise<number> {
     return this.getPrice('ETH');
   }
+
+  async getSuiPrice(): Promise<number> {
+    return this.getPrice('ETH');
+  }
+
 }

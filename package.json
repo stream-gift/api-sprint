@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@bonfida/spl-name-service": "^3.0.3",
+    "@mysten/sui.js": "^0.54.1",
     "@nestjs/axios": "^3.0.3",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.2.3",
