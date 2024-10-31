@@ -24,55 +24,58 @@ import {
   StreamerWithdrawal,
   StreamerWithdrawalStatus,
 } from '@prisma/client';
-import { SOLANA_COMMITMENT, MIST_PER_SUI, SUI_COMMITMENT } from 'src/common/constants';
+import {
+  SOLANA_COMMITMENT,
+  MIST_PER_SUI,
+  SUI_COMMITMENT,
+} from 'src/common/constants';
 import { WalletService } from 'src/wallet/wallet.service';
-import { SuiClient } from '@mysten/sui.js/client'
+import { SuiClient } from '@mysten/sui.js/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
-
-type AccountActivity = { 
-  digest: string,
-  type: string,
-  gasFee: string,
-  status: string,
-  sender: string,
-  timestampMs: number,
-  interactAddresses: InteractAddresses,
-  coinChanges: CoinChanges,
-  nftChanges: NFTChanges
-  nextPageCursor: number
-}
+type AccountActivity = {
+  digest: string;
+  type: string;
+  gasFee: string;
+  status: string;
+  sender: string;
+  timestampMs: number;
+  interactAddresses: InteractAddresses;
+  coinChanges: CoinChanges;
+  nftChanges: NFTChanges;
+  nextPageCursor: number;
+};
 
 type NFTChanges = {
-  objectId: string,
-  objectType: string,
-  marketPlace: string,
-  imageURL: string,
-  name: string,
-  packageId: string,
-  amount: string,
-  price: string
-}
+  objectId: string;
+  objectType: string;
+  marketPlace: string;
+  imageURL: string;
+  name: string;
+  packageId: string;
+  amount: string;
+  price: string;
+};
 
 type CoinChanges = {
-  amount: string,
-  coinAddress: string,
-  symbol: string,
-  decimal: string,
-  logo: string,
-}
+  amount: string;
+  coinAddress: string;
+  symbol: string;
+  decimal: string;
+  logo: string;
+};
 type InteractAddresses = {
-  address: string,
-  type: string,
-  name: string,
-  logo: string
-}
+  address: string;
+  type: string;
+  name: string;
+  logo: string;
+};
 @Injectable()
 export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BlockchainService.name);
 
-  private connection:Connection
-  private client: SuiClient
+  private connection: Connection;
+  private client: SuiClient;
   private subscriptions: Map<string, number> = new Map();
   constructor(
     private configService: ConfigService,
@@ -81,20 +84,24 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     private donationService: DonationService,
     private walletService: WalletService,
   ) {
-
     const suiHttpEndpoint = this.configService.get<string>('SUI_HTTP_ENDPOINT');
     const suiWsEndpoint = this.configService.get<string>('SUI_WS_ENDPOINT');
-    const solanaHttpEndpoint = this.configService.get<string>('SOLANA_HTTP_ENDPOINT')
-    const solanaWsEndpoint = this.configService.get<string>('SOLANA_WS_ENDPOINT')
+    const solanaHttpEndpoint = this.configService.get<string>(
+      'SOLANA_HTTP_ENDPOINT',
+    );
+    const solanaWsEndpoint =
+      this.configService.get<string>('SOLANA_WS_ENDPOINT');
 
-    this.connection = new Connection(solanaHttpEndpoint, {wsEndpoint: solanaWsEndpoint} )
+    this.connection = new Connection(solanaHttpEndpoint, {
+      wsEndpoint: solanaWsEndpoint,
+    });
     // this.connection = new SuiClient({
     //   url: httpEndpoint,
-    // }) 
+    // })
 
     this.client = new SuiClient({
       url: suiHttpEndpoint,
-    })
+    });
   }
 
   async onModuleInit() {
@@ -133,39 +140,42 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (!donation) {
-      this.logger.log(`No pending donation for address: ${address}`)
+      this.logger.log(`No pending donation for address: ${address}`);
     } else {
-
-      let donationCreationTimestamp = Math.floor(donation.createdAt.getTime() / 1000)
-      async function checkAccountActivity(address:string) { // Works only for main-net.
-        console.log(address)
-        const api = `https://api.blockvision.org/v2/sui/account/activities`
+      let donationCreationTimestamp = Math.floor(
+        donation.createdAt.getTime() / 1000,
+      );
+      async function checkAccountActivity(address: string) {
+        // Works only for main-net.
+        console.log(address);
+        const api = `https://api.blockvision.org/v2/sui/account/activities`;
         try {
-            console.log('test')
-            let res = await fetch(`${api}?address=${address}`, {
-                headers: {
-                    "x-api-key": `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? "",
-                }
-            });
-            if (!res.ok) console.log(res.status, res.statusText)
-            res = await res.json()
-            console.log(`checkAccountActivity (${address}):`, res) //@ts-ignore
-            return res.data
-    
-        } catch (error) { //@ts-ignore
-            console.log(error?.message)
+          console.log('test');
+          let res = await fetch(`${api}?address=${address}`, {
+            headers: {
+              'x-api-key': `2oAgBR14BFpmT18cK5NpFUm1ZO2`,
+            },
+          });
+          if (!res.ok) console.log(res.status, res.statusText);
+          res = await res.json();
+          console.log(`checkAccountActivity (${address}):`, res); //@ts-ignore
+          return res.data;
+        } catch (error) {
+          //@ts-ignore
+          console.log(error?.message);
         }
-        
+
         // return res?.result.data
-    }
-  
-      let data:AccountActivity[] = await checkAccountActivity(address)
-      for (let i = 0; i < data.length; i++) { 
+      }
+
+      let data: AccountActivity[] = await checkAccountActivity(address);
+      for (let i = 0; i < data.length; i++) {
         if (data[i].timestampMs > donationCreationTimestamp) {
           if (data[i].coinChanges.amount && data[i].sender != address) {
             this.logger.log(`Donation ${donation.id} is valid. Processing...`);
 
-            const senderDomainName = await this.getDomainNameFromAddress(address);
+            const senderDomainName =
+              await this.getDomainNameFromAddress(address);
 
             await this.donationService.processDonation(
               donation.id,
@@ -176,11 +186,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
           }
         }
       }
-      
-
     }
-
-    
   }
   async _listenToAddress(address: string) {
     if (this.subscriptions.has(address)) {
@@ -207,7 +213,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         const transaction = await this.connection.getTransaction(
           transactionHash,
           { commitment: SOLANA_COMMITMENT, maxSupportedTransactionVersion: 0 },
-);
+        );
         const preBalances = transaction.meta.preBalances;
         const postBalances = transaction.meta.postBalances;
         const preBalance = preBalances[1];
@@ -217,7 +223,9 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         const sender = transaction.transaction.message.staticAccountKeys[0];
         const senderAddress = sender.toBase58();
 
-        this.logger.log(`Received ${amount} SOL at ${address} from ${senderAddress}! Total Balance: ${newBalance} SOL`);
+        this.logger.log(
+          `Received ${amount} SOL at ${address} from ${senderAddress}! Total Balance: ${newBalance} SOL`,
+        );
         // Process the donation
         const donation = await this.prisma.donation.findFirst({
           where: {
@@ -261,7 +269,8 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
           } else {
             this.logger.log(`Donation ${donation.id} is valid. Processing...`);
 
-            const senderDomainName = await this.getDomainNameFromAddress(senderAddress);
+            const senderDomainName =
+              await this.getDomainNameFromAddress(senderAddress);
 
             await this.donationService.processDonation(
               donation.id,
@@ -295,7 +304,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getDomainNameFromAddress(address: string) {
-    const domain = await this.checkSUINS(address)
+    const domain = await this.checkSUINS(address);
     // const mainnetConnection = this.configService.get<string>(
     //   'SUI_MAINNET_HTTP_ENDPOINT',
     // )
@@ -317,28 +326,32 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     return `${domain}.sui`;
   }
 
-
-  async checkSUINS(address:string) { // Works only for main-net.
-    const api = `https://api.blockvision.org/v2/sui/account/nfts`
+  async checkSUINS(address: string) {
+    // Works only for main-net.
+    const api = `https://api.blockvision.org/v2/sui/account/nfts`;
     try {
-        this.logger.log(`Checking SUINS address ${address}`)
-        let res = await fetch(`${api}?account=${address}`, {
-            headers: {
-                "x-api-key": `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? "",
-            }
-        });
-        if (!res.ok) console.log(res.status, res.statusText)
-        res = await res.json() // @ts-ignore
-        console.log(`checkSUINS (${address}):`, res?.result.data) //@ts-ignore
-        const nfts:CollectionItem[] = res?.result.data //@ts-ignore
-        const suins_index = nfts.findIndex(nft=> nft.collection == `0xd22b24490e0bae52676651b4f56660a5ff8022a2576e0089f79b3c88d44e08f0::suins_registration::SuinsRegistration`)
+      this.logger.log(`Checking SUINS address ${address}`);
+      let res = await fetch(`${api}?account=${address}`, {
+        headers: {
+          'x-api-key': `2oAgBR14BFpmT18cK5NpFUm1ZO2`,
+        },
+      });
+      if (!res.ok) console.log(res.status, res.statusText);
+      res = await res.json(); // @ts-ignore
+      console.log(`checkSUINS (${address}):`, res?.result.data); //@ts-ignore
+      const nfts: CollectionItem[] = res?.result.data; //@ts-ignore
+      const suins_index = nfts.findIndex(
+        (nft) =>
+          nft.collection ==
+          `0xd22b24490e0bae52676651b4f56660a5ff8022a2576e0089f79b3c88d44e08f0::suins_registration::SuinsRegistration`,
+      );
 
-        if (suins_index > -1) return nfts[suins_index]
-    } catch (error) { //@ts-ignore
-        console.log(error?.message)
+      if (suins_index > -1) return nfts[suins_index];
+    } catch (error) {
+      //@ts-ignore
+      console.log(error?.message);
     }
-
-}
+  }
   async initiateWithdrawal(withdrawal: StreamerWithdrawal) {
     // Get sender wallet
     const addresses = await this.prisma.address.findMany();

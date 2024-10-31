@@ -20,7 +20,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 /**
  * There are 1-billion lamports in one SOL
  */
-const MIST_PER_SUI = 1000000000; 
+const MIST_PER_SUI = 1000000000;
 @Injectable()
 export class DonationService {
   private readonly logger = new Logger(DonationService.name);
@@ -70,6 +70,20 @@ export class DonationService {
     const donationAliveUntil = new Date(
       Date.now() + WAIT_TIME_FOR_DONATION_IN_SECONDS * 1000,
     );
+
+    console.log({
+      message: cleanText(message),
+      name,
+      currency,
+      amount: amount * MIST_PER_SUI,
+      amountFloat: amount,
+      amountAtomic: amount * MIST_PER_SUI,
+      amountUsd: Math.floor(amount * suiPriceCents),
+      streamerId: streamer.id,
+      addressId: address.id,
+      status: DonationStatus.PENDING, // Set initial status
+      pendingUntil: donationAliveUntil,
+    });
 
     return this.prisma.$transaction(async (prisma) => {
       const donation = await prisma.donation.create({
