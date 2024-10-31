@@ -28,7 +28,6 @@ import { SOLANA_COMMITMENT, MIST_PER_SUI, SUI_COMMITMENT } from 'src/common/cons
 import { WalletService } from 'src/wallet/wallet.service';
 import { SuiClient } from '@mysten/sui.js/client'
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { HttpService } from '@nestjs/axios';
 
 
 type AccountActivity = { 
@@ -77,22 +76,24 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   private subscriptions: Map<string, number> = new Map();
   constructor(
     private configService: ConfigService,
-    private httpService:HttpService,
     private prisma: PrismaService,
     @Inject(forwardRef(() => DonationService))
     private donationService: DonationService,
     private walletService: WalletService,
   ) {
 
-    const httpEndpoint = this.configService.get<string>('SUI_HTTP_ENDPOINT');
-    const wsEndpoint = this.configService.get<string>('SUI_WS_ENDPOINT');
-    this.connection = new Connection(httpEndpoint, {wsEndpoint})
+    const suiHttpEndpoint = this.configService.get<string>('SUI_HTTP_ENDPOINT');
+    const suiWsEndpoint = this.configService.get<string>('SUI_WS_ENDPOINT');
+    const solanaHttpEndpoint = this.configService.get<string>('SOLANA_HTTP_ENDPOINT')
+    const solanaWsEndpoint = this.configService.get<string>('SOLANA_WS_ENDPOINT')
+
+    this.connection = new Connection(solanaHttpEndpoint, {wsEndpoint: solanaWsEndpoint} )
     // this.connection = new SuiClient({
     //   url: httpEndpoint,
-    // })
+    // }) 
 
     this.client = new SuiClient({
-      url: httpEndpoint,
+      url: suiHttpEndpoint,
     })
   }
 
@@ -136,14 +137,29 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     } else {
 
       let donationCreationTimestamp = Math.floor(donation.createdAt.getTime() / 1000)
-      let res = await this.httpService.axiosRef.get(`https://api.blockvision.org/v2/sui/account/activities?address=${address}`, {
-        headers: {
-          'accept': 'application/json',
-          'x-api-key': `${this.configService.get<string>(`SUI_API_KEY_MAINNET`)}`
+      async function checkAccountActivity(address:string) { // Works only for main-net.
+        console.log(address)
+        const api = `https://api.blockvision.org/v2/sui/account/activities`
+        try {
+            console.log('test')
+            let res = await fetch(`${api}?address=${address}`, {
+                headers: {
+                    "x-api-key": `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? "",
+                }
+            });
+            if (!res.ok) console.log(res.status, res.statusText)
+            res = await res.json()
+            console.log(`checkAccountActivity (${address}):`, res) //@ts-ignore
+            return res.data
+    
+        } catch (error) { //@ts-ignore
+            console.log(error?.message)
         }
-      })
+        
+        // return res?.result.data
+    }
   
-      let data:AccountActivity[] = res.data
+      let data:AccountActivity[] = await checkAccountActivity(address)
       for (let i = 0; i < data.length; i++) { 
         if (data[i].timestampMs > donationCreationTimestamp) {
           if (data[i].coinChanges.amount && data[i].sender != address) {
@@ -279,7 +295,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getDomainNameFromAddress(address: string) {
-    const domain = this.checkSUINS(address)
+    const domain = await this.checkSUINS(address)
     // const mainnetConnection = this.configService.get<string>(
     //   'SUI_MAINNET_HTTP_ENDPOINT',
     // )
@@ -305,10 +321,10 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   async checkSUINS(address:string) { // Works only for main-net.
     const api = `https://api.blockvision.org/v2/sui/account/nfts`
     try {
-        console.log('test')
+        this.logger.log(`Checking SUINS address ${address}`)
         let res = await fetch(`${api}?account=${address}`, {
             headers: {
-                "x-api-key": process.env.BLOCKVISION_API_KEY ?? "",
+                "x-api-key": `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? "",
             }
         });
         if (!res.ok) console.log(res.status, res.statusText)
@@ -356,23 +372,23 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    const signature = await sendAndConfirmTransaction(
-      this.connection,
-      transaction,
-      [
-        await this.walletService.getWalletKeypairFromAddress(
-          senderPublicKey.toBase58(),
-        ),
-      ],
-    );
+    // const signature = await sendAndConfirmTransaction(
+    //   this.connection,
+    //   transaction,
+    //   [
+    //     await this.walletService.getWalletKeypairFromAddress(
+    //       senderPublicKey.toBase58(),
+    //     ),
+    //   ],
+    // );
 
-    await this.prisma.streamerWithdrawal.update({
-      where: { id: withdrawal.id },
-      data: {
-        status: StreamerWithdrawalStatus.SENT,
-        transactionHash: signature,
-      },
-    });
+    // await this.prisma.streamerWithdrawal.update({
+    //   where: { id: withdrawal.id },
+    //   data: {
+    //     status: StreamerWithdrawalStatus.SENT,
+    //     transactionHash: signature,
+    //   },
+    // });
   }
 
   @Cron(CronExpression.EVERY_MINUTE)

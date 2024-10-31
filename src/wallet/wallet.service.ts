@@ -31,10 +31,10 @@ export class WalletService {
 
     const keypair = Ed25519Keypair.deriveKeypair(this.mnemonic, mainWalletDerivePath);
 
-    const mainWalletDerivedKey = derivePath(
-      mainWalletDerivePath,
-      this.seed.toString('hex'),
-    ).key;
+    // const mainWalletDerivedKey = derivePath(
+    //   mainWalletDerivePath,
+    //   this.seed.toString('hex'),
+    // ).key;
 
     // this.mainWallet = Keypair.fromSeed(mainWalletDerivedKey);
     this.mainWalletPublicKey = keypair.getPublicKey().toSuiAddress();
@@ -54,9 +54,12 @@ export class WalletService {
 
     const path = `m/44'/784'/${index}'/0'`;
     const derivedKey = derivePath(path, this.seed.toString('hex')).key;
-    const wallet = Keypair.fromSeed(derivedKey);
-
-    const address = wallet.publicKey.toBase58();
+    const _wallet = Keypair.fromSeed(derivedKey);
+    console.log(path, index)
+    const wallet = Ed25519Keypair.deriveKeypairFromSeed(this.seed.toString('hex'), path )
+    // const _address = wallet.publicKey.toBase58();
+    const publicKey = wallet.getPublicKey()
+    const address = wallet.toSuiAddress()
 
     return this.prisma.address.create({
       data: {
@@ -72,9 +75,11 @@ export class WalletService {
       where: { address },
     });
 
-    const path = `m/44'/501'/${index}'/0'`;
+    const path = `m/44'/784'/${index}'/0'`;
     const derivedKey = derivePath(path, this.seed.toString('hex')).key;
 
-    return Keypair.fromSeed(derivedKey);
+
+
+    return Ed25519Keypair.deriveKeypairFromSeed(this.seed.toString('hex'), path )
   }
 }

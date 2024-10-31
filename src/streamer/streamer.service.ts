@@ -55,7 +55,7 @@ export class StreamerService {
           streamerId: streamer.id,
           balance: 0,
           pending: 0,
-          currency: Currency.SOL,
+          currency: Currency.SUI,
         },
       });
 
@@ -75,7 +75,7 @@ export class StreamerService {
         data: {
           streamerId: streamer.id,
           address,
-          currency: Currency.SOL,
+          currency: Currency.SUI,
         },
       });
 
@@ -294,7 +294,7 @@ export class StreamerService {
     });
 
     if (
-      balances.find((balance) => balance.currency === Currency.SOL)?.balance <
+      balances.find((balance) => balance.currency === Currency.SUI)?.balance <
       amount
     ) {
       throw new NotFoundException('Insufficient funds');
@@ -302,7 +302,7 @@ export class StreamerService {
 
     const withdrawal = await this.prisma.$transaction(async (prisma) => {
       await prisma.streamerBalance.update({
-        where: { streamerId_currency: { streamerId, currency: Currency.SOL } },
+        where: { streamerId_currency: { streamerId, currency: Currency.SUI } },
         data: {
           balance: { decrement: amount },
           pending: { increment: amount },
@@ -312,7 +312,7 @@ export class StreamerService {
       return prisma.streamerWithdrawal.create({
         data: {
           streamerId,
-          currency: Currency.SOL,
+          currency: Currency.SUI,
           amount: amount,
           amountFloat: amount / LAMPORTS_PER_SOL,
           amountAtomic: amount,

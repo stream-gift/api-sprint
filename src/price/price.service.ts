@@ -27,7 +27,7 @@ export class PriceService {
     }
 
     const response = await this.httpService.axiosRef.get(`https://eapi.binance.com/eapi/v1/index?underlying=${crypto}${pair}`);
-
+    
     const price = parseFloat(response.data.indexPrice);
     this.prices[`${crypto}${pair}`] = { price, timestamp: now };
 

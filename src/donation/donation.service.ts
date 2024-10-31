@@ -157,7 +157,7 @@ export class DonationService {
         where: {
           streamerId_currency: {
             streamerId: donation.streamerId,
-            currency: Currency.SOL,
+            currency: Currency.SUI,
           },
         },
         data: { balance: { increment: donation.amount } },
