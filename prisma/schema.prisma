@@ -91,6 +91,7 @@ model Donation {
     streamer                    Streamer       @relation(fields: [streamerId], references: [id])
     addressId                   String
     address                     Address        @relation(fields: [addressId], references: [id])
+    initial_address_balance     Int @default(0)
     transactionHash             String?
     transactionSender           String?
     transactionSenderDomainName String?

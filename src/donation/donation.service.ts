@@ -12,6 +12,7 @@ import { CreateDonationDto } from './dto/create-donation.dto';
 import { WalletService } from 'src/wallet/wallet.service';
 import { WAIT_TIME_FOR_DONATION_IN_SECONDS } from 'src/common/constants';
 import { BlockchainService } from 'src/blockchain/blockchain.service';
+import { getFullnodeUrl, SuiClient } from '@mysten/sui.js/client'
 
 import { cleanText } from 'src/common/utils/profanity';
 import { PriceService } from 'src/price/price.service';
@@ -24,14 +25,24 @@ const MIST_PER_SUI = 1000000000;
 @Injectable()
 export class DonationService {
   private readonly logger = new Logger(DonationService.name);
-
+  private client:SuiClient
   constructor(
     private prisma: PrismaService,
+
     private walletService: WalletService,
+
     @Inject(forwardRef(() => BlockchainService))
     private BlockchainService: BlockchainService,
     private priceService: PriceService,
-  ) {}
+  ) {
+
+    this.client = new SuiClient({
+      url: getFullnodeUrl('testnet'),
+    })
+  }
+
+
+
 
   async donate({
     message,
@@ -70,7 +81,13 @@ export class DonationService {
     const donationAliveUntil = new Date(
       Date.now() + WAIT_TIME_FOR_DONATION_IN_SECONDS * 1000,
     );
+    this.logger.log(`Fetching initial balance for address ${address.address}`)
 
+    let balanceCall = await this.client.getAllCoins({owner: address.address})
+
+    let balance = balanceCall.data.length ? balanceCall.data[balanceCall.data.findIndex(coin => coin.coinType == '0x2::sui::SUI')] : {balance: 0} 
+    
+    console.log('balance', balance)
     console.log({
       message: cleanText(message),
       name,
@@ -82,6 +99,7 @@ export class DonationService {
       streamerId: streamer.id,
       addressId: address.id,
       status: DonationStatus.PENDING, // Set initial status
+      initial_streamer_balance: balance.balance,
       pendingUntil: donationAliveUntil,
     });
 

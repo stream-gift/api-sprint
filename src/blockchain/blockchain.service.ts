@@ -78,6 +78,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     private configService: ConfigService,
     private prisma: PrismaService,
     @Inject(forwardRef(() => DonationService))
+
     private donationService: DonationService,
     private walletService: WalletService,
   ) {
@@ -112,7 +113,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       where: { lockedUntil: { gt: new Date() } },
     });
 
-    for (const address of addresses) {
+    for (const address of addresses) { // maybe call this on an interval for lockedUntil time
       await this.listenToAddress(address.address);
     }
   }
@@ -133,35 +134,28 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (!donation) {
-      this.logger.log(`No pending donation for address: ${address}`)
+      this.logger.log(
+        `No pending donation found for address: ${address}, returning.`,
+      );
+      await this.stopListeningToAddress(address);
+      return;
     } else {
 
       let donationCreationTimestamp = Math.floor(donation.createdAt.getTime() / 1000)
       this.logger.log(`currently polling this address, ${address}`)
-      let currentBalance = await this.client.getAllBalances({owner: address})
-      console.log(currentBalance)
+      let balanceCall = await this.client.getAllCoins({owner: address})
+      let balance = balanceCall.data.length ? balanceCall.data[balanceCall.data.findIndex(coin => coin.coinType == '0x2::sui::SUI')] : { balance: 0 }
+      console.log(balance)
+      console.log(donation) // needs to be doing this every 30 seconds... 
+      //if we polled it here how can we turn it off when we call listenToAddress tho?
+
+      if (balance.balance != donation.initial_address_balance && Number(balance.balance) > donation.initial_address_balance) {
+        this.logger.log(`Incoming Donation found! New balance: ${balance.balance}`)
+      } else {
+        this.logger.log(`Awaiting pending donation.. Current balance: ${balance.balance}`)
+      }
       
-    //   async function checkAccountActivity(address:string) { // Works only for main-net.
-    //     console.log(address)
-    //     const api = `https://api.blockvision.org/v2/sui/account/activities`
-    //     try {
-    //         console.log('test')
-    //         let res = await fetch(`${api}?address=${address}`, {
-    //             headers: {
-    //                 "x-api-key": `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? "",
-    //             }
-    //         });
-    //         if (!res.ok) console.log(res.status, res.statusText)
-    //         res = await res.json()
-    //         console.log(`checkAccountActivity (${address}):`, res) //@ts-ignore
-    //         return res.data
-    
-    //     } catch (error) { //@ts-ignore
-    //         console.log(error?.message)
-    //     }
-        
-    //     // return res?.result.data
-    // }
+ 
   
       // let data:AccountActivity[] = await checkAccountActivity(address)
       // for (let i = 0; i < data.length; i++) { 
@@ -309,23 +303,6 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
 
   async getDomainNameFromAddress(address: string) {
     const domain = await this.checkSUINS(address)
-    // const mainnetConnection = this.configService.get<string>(
-    //   'SUI_MAINNET_HTTP_ENDPOINT',
-    // )
-    //   ? new Connection(
-    //       this.configService.get<string>('SOLANA_MAINNET_HTTP_ENDPOINT'),
-    //     )
-    //   : this.connection;
-
-    // const ownerWallet = new PublicKey(address);
-    // const allDomainKeys = await getAllDomains(mainnetConnection, ownerWallet);
-
-    // if (allDomainKeys.length === 0) {
-    //   return null;
-    // }
-
-    // const [domainNameKey] = allDomainKeys;
-    // const domainName = await reverseLookup(mainnetConnection, domainNameKey);
 
     return `${domain}.sui`;
   }
