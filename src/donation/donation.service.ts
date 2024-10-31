@@ -12,11 +12,15 @@ import { CreateDonationDto } from './dto/create-donation.dto';
 import { WalletService } from 'src/wallet/wallet.service';
 import { WAIT_TIME_FOR_DONATION_IN_SECONDS } from 'src/common/constants';
 import { BlockchainService } from 'src/blockchain/blockchain.service';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+
 import { cleanText } from 'src/common/utils/profanity';
 import { PriceService } from 'src/price/price.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
+/**
+ * There are 1-billion lamports in one SOL
+ */
+const MIST_PER_SUI = 1000000000; 
 @Injectable()
 export class DonationService {
   private readonly logger = new Logger(DonationService.name);
@@ -43,7 +47,6 @@ export class DonationService {
     if (!streamer) {
       throw new NotFoundException('Streamer not found');
     }
-
     let address = await this.prisma.address.findFirst({
       where: {
         OR: [
@@ -61,8 +64,8 @@ export class DonationService {
       address = await this.walletService.createWallet();
     }
 
-    const solanaPrice = await this.priceService.getSolanaPrice();
-    const solanaPriceCents = Math.floor(solanaPrice * 100);
+    const suiPrice = await this.priceService.getSuiPrice();
+    const suiPriceCents = Math.floor(suiPrice * 100);
 
     const donationAliveUntil = new Date(
       Date.now() + WAIT_TIME_FOR_DONATION_IN_SECONDS * 1000,
@@ -74,10 +77,10 @@ export class DonationService {
           message: cleanText(message),
           name,
           currency,
-          amount: amount * LAMPORTS_PER_SOL,
+          amount: amount * MIST_PER_SUI,
           amountFloat: amount,
-          amountAtomic: amount * LAMPORTS_PER_SOL,
-          amountUsd: Math.floor(amount * solanaPriceCents),
+          amountAtomic: amount * MIST_PER_SUI,
+          amountUsd: Math.floor(amount * suiPriceCents),
           streamerId: streamer.id,
           addressId: address.id,
           status: DonationStatus.PENDING, // Set initial status
