@@ -6,16 +6,6 @@ import {
   forwardRef,
   Inject,
 } from '@nestjs/common';
-import {
-  Connection,
-  PublicKey,
-  LAMPORTS_PER_SOL,
-  Transaction,
-  SystemProgram,
-  sendAndConfirmTransaction,
-  Keypair,
-} from '@solana/web3.js';
-import { getAllDomains, reverseLookup } from '@bonfida/spl-name-service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { DonationService } from '../donation/donation.service';
@@ -24,78 +14,65 @@ import {
   StreamerWithdrawal,
   StreamerWithdrawalStatus,
 } from '@prisma/client';
-import { SOLANA_COMMITMENT, MIST_PER_SUI, SUI_COMMITMENT } from 'src/common/constants';
 import { WalletService } from 'src/wallet/wallet.service';
-import { SuiClient } from '@mysten/sui.js/client'
+import { CoinBalance, SuiClient } from '@mysten/sui.js/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { parseUnits } from 'src/common/utils/bigints';
 
-
-type AccountActivity = { 
-  digest: string,
-  type: string,
-  gasFee: string,
-  status: string,
-  sender: string,
-  timestampMs: number,
-  interactAddresses: InteractAddresses,
-  coinChanges: CoinChanges,
-  nftChanges: NFTChanges
-  nextPageCursor: number
-}
+type AccountActivity = {
+  digest: string;
+  type: string;
+  gasFee: string;
+  status: string;
+  sender: string;
+  timestampMs: number;
+  interactAddresses: InteractAddresses;
+  coinChanges: CoinChanges;
+  nftChanges: NFTChanges;
+  nextPageCursor: number;
+};
 
 type NFTChanges = {
-  objectId: string,
-  objectType: string,
-  marketPlace: string,
-  imageURL: string,
-  name: string,
-  packageId: string,
-  amount: string,
-  price: string
-}
+  objectId: string;
+  objectType: string;
+  marketPlace: string;
+  imageURL: string;
+  name: string;
+  packageId: string;
+  amount: string;
+  price: string;
+};
 
 type CoinChanges = {
-  amount: string,
-  coinAddress: string,
-  symbol: string,
-  decimal: string,
-  logo: string,
-}
+  amount: string;
+  coinAddress: string;
+  symbol: string;
+  decimal: string;
+  logo: string;
+};
 type InteractAddresses = {
-  address: string,
-  type: string,
-  name: string,
-  logo: string
-}
+  address: string;
+  type: string;
+  name: string;
+  logo: string;
+};
 @Injectable()
 export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BlockchainService.name);
 
-  private connection:Connection
-  private client: SuiClient
-  private subscriptions: Map<string, number> = new Map();
+  private client: SuiClient;
+  private subscriptions: Map<string, () => void> = new Map();
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
     @Inject(forwardRef(() => DonationService))
-
     private donationService: DonationService,
     private walletService: WalletService,
   ) {
-
     const suiHttpEndpoint = this.configService.get<string>('SUI_HTTP_ENDPOINT');
-    const suiWsEndpoint = this.configService.get<string>('SUI_WS_ENDPOINT');
-    const solanaHttpEndpoint = this.configService.get<string>('SOLANA_HTTP_ENDPOINT')
-    const solanaWsEndpoint = this.configService.get<string>('SOLANA_WS_ENDPOINT')
-
-    this.connection = new Connection(solanaHttpEndpoint, {wsEndpoint: solanaWsEndpoint} )
-    // this.connection = new SuiClient({
-    //   url: httpEndpoint,
-    // }) 
-
     this.client = new SuiClient({
       url: suiHttpEndpoint,
-    })
+    });
   }
 
   async onModuleInit() {
@@ -103,9 +80,8 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    for (const address of this.subscriptions.keys()) {
-      await this.stopListeningToAddress(address);
-    }
+    for (const address of this.subscriptions.keys())
+      this.stopListeningToAddress(address);
   }
 
   private async startListeningToAllAddresses() {
@@ -113,7 +89,8 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       where: { lockedUntil: { gt: new Date() } },
     });
 
-    for (const address of addresses) { // maybe call this on an interval for lockedUntil time
+    for (const address of addresses) {
+      // maybe call this on an interval for lockedUntil time
       await this.listenToAddress(address.address);
     }
   }
@@ -140,25 +117,37 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       await this.stopListeningToAddress(address);
       return;
     } else {
-
-      let donationCreationTimestamp = Math.floor(donation.createdAt.getTime() / 1000)
-      this.logger.log(`currently polling this address, ${address}`)
-      let balanceCall = await this.client.getAllCoins({owner: address})
-      let balance = balanceCall.data.length ? balanceCall.data[balanceCall.data.findIndex(coin => coin.coinType == '0x2::sui::SUI')] : { balance: 0 }
-      console.log(balance)
-      console.log(donation) // needs to be doing this every 30 seconds... 
+      let donationCreationTimestamp = Math.floor(
+        donation.createdAt.getTime() / 1000,
+      );
+      this.logger.log(`currently polling this address, ${address}`);
+      let balanceCall = await this.client.getAllCoins({ owner: address });
+      let balance = balanceCall.data.length
+        ? balanceCall.data[
+            balanceCall.data.findIndex(
+              (coin) => coin.coinType == '0x2::sui::SUI',
+            )
+          ]
+        : { balance: 0 };
+      console.log(balance);
+      console.log(donation); // needs to be doing this every 30 seconds...
       //if we polled it here how can we turn it off when we call listenToAddress tho?
 
-      if (balance.balance != donation.initial_address_balance && Number(balance.balance) > donation.initial_address_balance) {
-        this.logger.log(`Incoming Donation found! New balance: ${balance.balance}`)
+      if (
+        balance.balance != donation.initial_address_balance &&
+        Number(balance.balance) > donation.initial_address_balance
+      ) {
+        this.logger.log(
+          `Incoming Donation found! New balance: ${balance.balance}`,
+        );
       } else {
-        this.logger.log(`Awaiting pending donation.. Current balance: ${balance.balance}`)
+        this.logger.log(
+          `Awaiting pending donation.. Current balance: ${balance.balance}`,
+        );
       }
-      
- 
-  
+
       // let data:AccountActivity[] = await checkAccountActivity(address)
-      // for (let i = 0; i < data.length; i++) { 
+      // for (let i = 0; i < data.length; i++) {
       //   if (data[i].timestampMs > donationCreationTimestamp) {
       //     if (data[i].coinChanges.amount && data[i].sender != address) {
       //       this.logger.log(`Donation ${data[i].digest} is valid. Processing...`);
@@ -175,7 +164,6 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       //         },
       //       });
 
-
       //       await this.donationService.processDonation(
       //         donation.id,
       //         data[i].digest,
@@ -183,49 +171,51 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       //         senderDomainName,
       //       );
 
-            
       //     }
       //   }
-      // } 
+      // }
     }
   }
+
+  balanceWatcher({
+    address,
+    onBalance,
+  }: {
+    address: string;
+    onBalance: (coinBalance: CoinBalance) => unknown;
+  }) {
+    let interval = setInterval(() => {
+      this.client.getBalance({ owner: address }).then((c) => {
+        if (interval) onBalance(c);
+      });
+    }, 5000);
+
+    this.client.getBalance({ owner: address }).then((c) => {
+      if (interval) onBalance(c);
+    });
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = undefined;
+      }
+    };
+  }
+
   async _listenToAddress(address: string) {
     if (this.subscriptions.has(address)) {
       this.logger.log(`Already listening to address: ${address}`);
       return;
     }
 
-    const publicKey = new PublicKey(address);
-    const _subscriptionId = this.connection.onAccountChange(
-      publicKey,
-      async (newAccountInfo, context) => {
-        this.logger.log(`Transaction detected for address: ${address}`);
+    let initalBal = await this.client.getBalance({ owner: address });
+    const startBalance = parseUnits(initalBal.totalBalance, 9);
 
-        const newBalanceLamports = newAccountInfo.lamports;
-        const newBalance = newBalanceLamports / MIST_PER_SUI;
-        
-        const signatures = await this.connection.getSignaturesForAddress(
-          publicKey,
-          {},
-          SUI_COMMITMENT,
-        );
-        const transactionHash = signatures[0].signature;
+    const cleanSub = this.balanceWatcher({
+      address,
+      onBalance: async (coinBalance: CoinBalance) => {
+        this.logger.log(`Balance change for detected for address: ${address}`);
 
-        const transaction = await this.connection.getTransaction(
-          transactionHash,
-          { commitment: SOLANA_COMMITMENT, maxSupportedTransactionVersion: 0 },
-);
-        const preBalances = transaction.meta.preBalances;
-        const postBalances = transaction.meta.postBalances;
-        const preBalance = preBalances[1];
-        const postBalance = postBalances[1];
-        const amountLamports = postBalance - preBalance;
-        const amount = amountLamports / MIST_PER_SUI;
-        const sender = transaction.transaction.message.staticAccountKeys[0];
-        const senderAddress = sender.toBase58();
-
-        this.logger.log(`Received ${amount} SOL at ${address} from ${senderAddress}! Total Balance: ${newBalance} SOL`);
-        // Process the donation
         const donation = await this.prisma.donation.findFirst({
           where: {
             address: { address },
@@ -240,51 +230,32 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
           this.logger.log(
             `No pending donation found for address: ${address}, returning.`,
           );
-          await this.stopListeningToAddress(address);
+          this.stopListeningToAddress(address);
           return;
-        } else {
+        }
+
+        const balanceChange =
+          parseUnits(coinBalance.totalBalance, 9) - startBalance;
+        if (balanceChange >= BigInt(Math.floor(donation.amountAtomic))) {
           this.logger.log(
             `Donation ${donation.id} found for address: ${address}`,
           );
+          this.logger.log(`Donation ${donation.id} is valid. Processing...`);
 
-          if (amountLamports < donation.amountAtomic) {
-            await this.prisma.donation.update({
-              where: { id: donation.id },
-              data: {
-                status: DonationStatus.FAILED,
-                transactionHash,
-                transactionSender: senderAddress,
-              },
-            });
+          // const senderDomainName = await this.getDomainNameFromAddress(senderAddress);
 
-            await this.prisma.address.update({
-              where: { address },
-              data: { lockedUntil: null },
-            });
-
-            this.logger.error(
-              `Donation ${donation.id} failed due to lower amount than expected. Expected ${donation.amountFloat} SOL, received ${amount} SOL.`,
-            );
-          } else {
-            this.logger.log(`Donation ${donation.id} is valid. Processing...`);
-
-            const senderDomainName = await this.getDomainNameFromAddress(senderAddress);
-
-            await this.donationService.processDonation(
-              donation.id,
-              transactionHash,
-              senderAddress,
-              senderDomainName,
-            );
-          }
-
-          await this.stopListeningToAddress(address);
+          await this.donationService.processDonation(
+            donation.id,
+            '', // transactionHash,
+            '', // senderAddress,
+            '', // senderDomainName,
+          );
+          this.stopListeningToAddress(address);
         }
       },
-      { commitment: SOLANA_COMMITMENT },
-    );
+    });
 
-    this.subscriptions.set(address, _subscriptionId);
+    this.subscriptions.set(address, cleanSub);
     this.logger.log(`Started listening to address: ${address}`);
   }
 
@@ -292,75 +263,76 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     return this._listenToAddress(address);
   }
 
-  async stopListeningToAddress(address: string) {
-    const subscriptionId = this.subscriptions.get(address);
-    if (subscriptionId !== undefined) {
-      await this.connection.removeAccountChangeListener(subscriptionId);
-      this.subscriptions.delete(address);
-      this.logger.log(`Stopped listening to address: ${address}`);
-    }
+  stopListeningToAddress(address: string) {
+    const cleanup = this.subscriptions.get(address);
+    cleanup();
+    this.subscriptions.delete(address);
+    this.logger.log(`Stopped listening to address: ${address}`);
   }
 
   async getDomainNameFromAddress(address: string) {
-    const domain = await this.checkSUINS(address)
+    const domain = await this.checkSUINS(address);
 
     return `${domain}.sui`;
   }
 
-
-  async checkSUINS(address:string) { // Works only for main-net.
-    const api = `https://api.blockvision.org/v2/sui/account/nfts`
+  async checkSUINS(address: string) {
+    // Works only for main-net.
+    const api = `https://api.blockvision.org/v2/sui/account/nfts`;
     try {
-        this.logger.log(`Checking SUINS address ${address}`)
-        let res = await fetch(`${api}?account=${address}`, {
-            headers: {
-                "x-api-key": `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? "",
-            }
-        });
-        if (!res.ok) console.log(res.status, res.statusText)
-        res = await res.json() // @ts-ignore
-        console.log(`checkSUINS (${address}):`, res?.result.data) //@ts-ignore
-        const nfts:CollectionItem[] = res?.result.data //@ts-ignore
-        const suins_index = nfts.findIndex(nft=> nft.collection == `0xd22b24490e0bae52676651b4f56660a5ff8022a2576e0089f79b3c88d44e08f0::suins_registration::SuinsRegistration`)
+      this.logger.log(`Checking SUINS address ${address}`);
+      let res = await fetch(`${api}?account=${address}`, {
+        headers: {
+          'x-api-key': `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? '',
+        },
+      });
+      if (!res.ok) console.log(res.status, res.statusText);
+      res = await res.json(); // @ts-ignore
+      console.log(`checkSUINS (${address}):`, res?.result.data); //@ts-ignore
+      const nfts: CollectionItem[] = res?.result.data; //@ts-ignore
+      const suins_index = nfts.findIndex(
+        (nft) =>
+          nft.collection ==
+          `0xd22b24490e0bae52676651b4f56660a5ff8022a2576e0089f79b3c88d44e08f0::suins_registration::SuinsRegistration`,
+      );
 
-        if (suins_index > -1) return nfts[suins_index]
-    } catch (error) { //@ts-ignore
-        console.log(error?.message)
+      if (suins_index > -1) return nfts[suins_index];
+    } catch (error) {
+      //@ts-ignore
+      console.log(error?.message);
     }
-
-}
+  }
   async initiateWithdrawal(withdrawal: StreamerWithdrawal) {
     // Get sender wallet
     const addresses = await this.prisma.address.findMany();
 
-    let senderPublicKey: PublicKey;
+    // let senderPublicKey: PublicKey;
 
     for (const address of addresses) {
-      const publicKey = new PublicKey(address.address);
-      const balance = await this.connection.getBalance(publicKey);
-      const balanceInSol = balance / MIST_PER_SUI;
-
-      if (balanceInSol >= withdrawal.amountFloat) {
-        senderPublicKey = publicKey;
-        break;
-      }
+      // const publicKey = new PublicKey(address.address);
+      // const balance = await this.client.getBalance({ owner: address });
+      // const balanceInSui = balance / MIST_PER_SUI;
+      // if (balanceInSol >= withdrawal.amountFloat) {
+      //   senderPublicKey = publicKey;
+      //   break;
+      // }
     }
 
-    if (!senderPublicKey) {
-      await this.prisma.streamerWithdrawal.update({
-        where: { id: withdrawal.id },
-        data: { status: 'FAILED' },
-      });
-      throw new Error('No sender address found');
-    }
+    // if (!senderPublicKey) {
+    //   await this.prisma.streamerWithdrawal.update({
+    //     where: { id: withdrawal.id },
+    //     data: { status: 'FAILED' },
+    //   });
+    //   throw new Error('No sender address found');
+    // }
 
-    const transaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: senderPublicKey,
-        toPubkey: new PublicKey(withdrawal.address),
-        lamports: withdrawal.amountAtomic,
-      }),
-    );
+    // const transaction = new Transaction().add(
+    //   SystemProgram.transfer({
+    //     fromPubkey: senderPublicKey,
+    //     toPubkey: new PublicKey(withdrawal.address),
+    //     lamports: withdrawal.amountAtomic,
+    //   }),
+    // );
 
     // const signature = await sendAndConfirmTransaction(
     //   this.connection,
@@ -388,10 +360,11 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const withdrawal of withdrawals) {
-      const transaction = await this.connection.getParsedTransaction(
-        withdrawal.transactionHash,
-        { maxSupportedTransactionVersion: 0 },
-      );
+      // const transaction = await this.connection.getParsedTransaction(
+      //   withdrawal.transactionHash,
+      //   { maxSupportedTransactionVersion: 0 },
+      // );
+      const transaction = undefined;
 
       if (!transaction) {
         continue;
