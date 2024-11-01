@@ -3,10 +3,9 @@ import { HttpService } from '@nestjs/axios';
 type Crypto = 'SOL' | 'SUI' | 'BTC' | 'ETH' | 'USDC';
 type Pair = 'USDT';
 
-
 type CoinGecko = {
-  sui: { usd: string }
-}
+  sui: { usd: string };
+};
 const CACHE_DURATION_MINS = 5;
 const CACHE_DURATION_MS = CACHE_DURATION_MINS * 60 * 1000;
 
@@ -26,8 +25,10 @@ export class PriceService {
       return cached.price;
     }
 
-    const response = await this.httpService.axiosRef.get(`https://eapi.binance.com/eapi/v1/index?underlying=${crypto}${pair}`);
-    
+    const response = await this.httpService.axiosRef.get(
+      `https://eapi.binance.com/eapi/v1/index?underlying=${crypto}${pair}`,
+    );
+
     const price = parseFloat(response.data.indexPrice);
     this.prices[`${crypto}${pair}`] = { price, timestamp: now };
 
@@ -54,7 +55,6 @@ export class PriceService {
     //   }
     // });
 
-    return 2.11
+    return 2.11;
   }
-
 }

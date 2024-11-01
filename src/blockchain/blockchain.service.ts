@@ -283,7 +283,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Checking SUINS address ${address}`);
       let res = await fetch(`${api}?account=${address}`, {
         headers: {
-          'x-api-key': `2oAgBR14BFpmT18cK5NpFUm1ZO2` ?? '',
+          'x-api-key': `2oAgBR14BFpmT18cK5NpFUm1ZO2`,
         },
       });
       if (!res.ok) console.log(res.status, res.statusText);
