@@ -95,6 +95,31 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  balanceWatcher({
+    address,
+    onBalance,
+  }: {
+    address: string;
+    onBalance: (coinBalance: CoinBalance) => unknown;
+  }) {
+    let interval = undefined;
+
+    interval = setInterval(() => {
+      this.client.getBalance({ owner: address }).then((c) => {
+        if (interval) onBalance(c);
+      });
+    }, 5000);
+
+    this.client.getBalance({ owner: address }).then((c) => {
+      if (interval) onBalance(c);
+    });
+
+    return () => {
+      if (interval) clearInterval(interval);
+      interval = undefined;
+    };
+  }
+
   async listenToAddress(address: string) {
     if (this.subscriptions.has(address)) {
       this.logger.log(`Already listening to address: ${address}`);
@@ -114,102 +139,11 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `No pending donation found for address: ${address}, returning.`,
       );
-      await this.stopListeningToAddress(address);
-      return;
-    } else {
-      let donationCreationTimestamp = Math.floor(
-        donation.createdAt.getTime() / 1000,
-      );
-      this.logger.log(`currently polling this address, ${address}`);
-      let balanceCall = await this.client.getAllCoins({ owner: address });
-      let balance = balanceCall.data.length
-        ? balanceCall.data[
-            balanceCall.data.findIndex(
-              (coin) => coin.coinType == '0x2::sui::SUI',
-            )
-          ]
-        : { balance: 0 };
-      console.log(balance);
-      console.log(donation); // needs to be doing this every 30 seconds...
-      //if we polled it here how can we turn it off when we call listenToAddress tho?
-
-      if (
-        balance.balance != donation.initial_address_balance &&
-        Number(balance.balance) > donation.initial_address_balance
-      ) {
-        this.logger.log(
-          `Incoming Donation found! New balance: ${balance.balance}`,
-        );
-      } else {
-        this.logger.log(
-          `Awaiting pending donation.. Current balance: ${balance.balance}`,
-        );
-      }
-
-      // let data:AccountActivity[] = await checkAccountActivity(address)
-      // for (let i = 0; i < data.length; i++) {
-      //   if (data[i].timestampMs > donationCreationTimestamp) {
-      //     if (data[i].coinChanges.amount && data[i].sender != address) {
-      //       this.logger.log(`Donation ${data[i].digest} is valid. Processing...`);
-
-      //       const senderDomainName = await this.getDomainNameFromAddress(address);
-
-      //       const donation = await this.prisma.donation.findFirst({
-      //         where: {
-      //           address: { address },
-      //           status: DonationStatus.PENDING,
-      //           pendingUntil: {
-      //             gte: new Date(),
-      //           },
-      //         },
-      //       });
-
-      //       await this.donationService.processDonation(
-      //         donation.id,
-      //         data[i].digest,
-      //         address,
-      //         senderDomainName,
-      //       );
-
-      //     }
-      //   }
-      // }
-    }
-  }
-
-  balanceWatcher({
-    address,
-    onBalance,
-  }: {
-    address: string;
-    onBalance: (coinBalance: CoinBalance) => unknown;
-  }) {
-    let interval = setInterval(() => {
-      this.client.getBalance({ owner: address }).then((c) => {
-        if (interval) onBalance(c);
-      });
-    }, 5000);
-
-    this.client.getBalance({ owner: address }).then((c) => {
-      if (interval) onBalance(c);
-    });
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-        interval = undefined;
-      }
-    };
-  }
-
-  async _listenToAddress(address: string) {
-    if (this.subscriptions.has(address)) {
-      this.logger.log(`Already listening to address: ${address}`);
       return;
     }
 
     let initalBal = await this.client.getBalance({ owner: address });
-    const startBalance = parseUnits(initalBal.totalBalance, 9);
+    const startBalance = parseUnits(initalBal.totalBalance, 0);
 
     const cleanSub = this.balanceWatcher({
       address,
@@ -235,8 +169,10 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         }
 
         const balanceChange =
-          parseUnits(coinBalance.totalBalance, 9) - startBalance;
+          parseUnits(coinBalance.totalBalance, 0) - startBalance;
+
         if (balanceChange >= BigInt(Math.floor(donation.amountAtomic))) {
+          this.stopListeningToAddress(address);
           this.logger.log(
             `Donation ${donation.id} found for address: ${address}`,
           );
@@ -250,7 +186,6 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
             '', // senderAddress,
             '', // senderDomainName,
           );
-          this.stopListeningToAddress(address);
         }
       },
     });
@@ -259,13 +194,8 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Started listening to address: ${address}`);
   }
 
-  async startListeningToAddress(address: string) {
-    return this._listenToAddress(address);
-  }
-
   stopListeningToAddress(address: string) {
-    const cleanup = this.subscriptions.get(address);
-    cleanup();
+    this.subscriptions.get(address)();
     this.subscriptions.delete(address);
     this.logger.log(`Stopped listening to address: ${address}`);
   }
