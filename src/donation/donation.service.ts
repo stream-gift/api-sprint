@@ -79,9 +79,11 @@ export class DonationService {
     );
     this.logger.log(`Fetching initial balance for address ${address.address}`);
 
-    let balanceCall = await this.client.getAllCoins({ owner: address.address });
+    const balanceCall = await this.client.getAllCoins({
+      owner: address.address,
+    });
 
-    let balance = balanceCall.data.length
+    const balance = balanceCall.data.length
       ? balanceCall.data[
           balanceCall.data.findIndex((coin) => coin.coinType == '0x2::sui::SUI')
         ]

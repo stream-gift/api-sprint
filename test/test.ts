@@ -56,10 +56,10 @@ async function listenToAddress(address: string) {
   if (!donation) {
     this.logger.log(`No pending donation for address: ${address}`);
   } else {
-    let donationCreationTimestamp = Math.floor(
+    const donationCreationTimestamp = Math.floor(
       donation.createdAt.getTime() / 1000,
     );
-    let res = await this.httpService.axiosRef.get(
+    const res = await this.httpService.axiosRef.get(
       `https://api.blockvision.org/v2/sui/account/activities?address=${address}`,
       {
         headers: {
@@ -69,7 +69,7 @@ async function listenToAddress(address: string) {
       },
     );
 
-    let data: AccountActivity[] = res.data;
+    const data: AccountActivity[] = res.data;
     for (let i = 0; i < data.length; i++) {
       if (data[i].timestampMs > donationCreationTimestamp) {
         if (data[i].coinChanges.amount && data[i].sender != address) {
