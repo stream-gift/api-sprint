@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 
 import * as bip39 from 'bip39';
 import { Currency } from '@prisma/client';
@@ -32,12 +32,6 @@ export class WalletService {
       mainWalletDerivePath,
     );
 
-    // const mainWalletDerivedKey = derivePath(
-    //   mainWalletDerivePath,
-    //   this.seed.toString('hex'),
-    // ).key;
-
-    // this.mainWallet = Keypair.fromSeed(mainWalletDerivedKey);
     this.mainWalletPublicKey = keypair.getPublicKey().toSuiAddress();
 
     this.logger.log(`Main wallet connected: ${this.mainWalletPublicKey}`);

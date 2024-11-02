@@ -17,13 +17,14 @@ import {
 import { WalletService } from 'src/wallet/wallet.service';
 import {
   CoinBalance,
-  PaginatedObjectsResponse,
   PaginatedTransactionResponse,
   SuiClient,
   SuiTransactionBlockResponse,
-} from '@mysten/sui.js/client';
+} from '@mysten/sui/client';
+import { Transaction } from '@mysten/sui/transactions';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { parseUnits } from 'src/common/utils/bigints';
+import { MIST_PER_SUI } from 'src/common/constants';
 
 type AccountActivity = {
   digest: string;
@@ -323,52 +324,48 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   async initiateWithdrawal(withdrawal: StreamerWithdrawal) {
     // Get sender wallet
     const addresses = await this.prisma.address.findMany();
-
-    // let senderPublicKey: PublicKey;
+    let senderAddress: string | undefined = undefined;
 
     for (const address of addresses) {
-      // const publicKey = new PublicKey(address.address);
-      // const balance = await this.client.getBalance({ owner: address });
-      // const balanceInSui = balance / MIST_PER_SUI;
-      // if (balanceInSol >= withdrawal.amountFloat) {
-      //   senderPublicKey = publicKey;
-      //   break;
-      // }
+      const balance = await this.client.getBalance({ owner: address.address });
+      const balanceInSui = Number(balance.totalBalance) / MIST_PER_SUI;
+      if (balanceInSui >= withdrawal.amountFloat) {
+        senderAddress = address.address;
+        break;
+      }
     }
 
-    // if (!senderPublicKey) {
-    //   await this.prisma.streamerWithdrawal.update({
-    //     where: { id: withdrawal.id },
-    //     data: { status: 'FAILED' },
-    //   });
-    //   throw new Error('No sender address found');
-    // }
+    if (!senderAddress) {
+      await this.prisma.streamerWithdrawal.update({
+        where: { id: withdrawal.id },
+        data: { status: 'FAILED' },
+      });
+      throw new Error('No sender address found');
+    }
 
-    // const transaction = new Transaction().add(
-    //   SystemProgram.transfer({
-    //     fromPubkey: senderPublicKey,
-    //     toPubkey: new PublicKey(withdrawal.address),
-    //     lamports: withdrawal.amountAtomic,
-    //   }),
-    // );
+    console.log(withdrawal);
 
-    // const signature = await sendAndConfirmTransaction(
-    //   this.connection,
-    //   transaction,
-    //   [
-    //     await this.walletService.getWalletKeypairFromAddress(
-    //       senderPublicKey.toBase58(),
-    //     ),
-    //   ],
-    // );
+    const tx = new Transaction();
+    const [coin] = tx.splitCoins(tx.gas, [withdrawal.amountAtomic]);
+    tx.transferObjects([coin], withdrawal.address);
 
-    // await this.prisma.streamerWithdrawal.update({
-    //   where: { id: withdrawal.id },
-    //   data: {
-    //     status: StreamerWithdrawalStatus.SENT,
-    //     transactionHash: signature,
-    //   },
-    // });
+    const signer =
+      await this.walletService.getWalletKeypairFromAddress(senderAddress);
+    const signed = await this.client.signAndExecuteTransaction({
+      signer,
+      transaction: tx,
+    });
+    const complete = await this.client.waitForTransaction({
+      digest: signed.digest,
+    });
+
+    await this.prisma.streamerWithdrawal.update({
+      where: { id: withdrawal.id },
+      data: {
+        status: StreamerWithdrawalStatus.SENT,
+        transactionHash: complete.digest,
+      },
+    });
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -378,18 +375,16 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const withdrawal of withdrawals) {
-      // const transaction = await this.connection.getParsedTransaction(
-      //   withdrawal.transactionHash,
-      //   { maxSupportedTransactionVersion: 0 },
-      // );
-      const transaction = undefined;
+      const transaction = await this.client.waitForTransaction({
+        digest: withdrawal.transactionHash,
+      });
 
       if (!transaction) {
         continue;
       }
 
       // Withdrawal TX Failed
-      if (transaction.meta.err) {
+      if (transaction.errors) {
         this.prisma.$transaction([
           this.prisma.streamerWithdrawal.update({
             where: { id: withdrawal.id },
