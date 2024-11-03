@@ -299,7 +299,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   async getDomainNameFromAddress(address: string) {
     const domain = await this.checkSUINS(address);
 
-    return `${domain}.sui`;
+    return `${domain}`;
   }
 
   async checkSUINS(address: string) {
