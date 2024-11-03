@@ -284,7 +284,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   }
 
   stopListeningToAddress(address: string) {
-    this.subscriptions.get(address)();
+    if (this.subscriptions.has(address)) this.subscriptions.get(address)();
     this.subscriptions.delete(address);
     this.logger.log(`Stopped listening to address: ${address}`);
   }
@@ -316,7 +316,6 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       );
       if (suins_index > -1) {
         return nfts[suins_index].name ?? address;
-
       }
     } catch (error) {
       //@ts-ignore
