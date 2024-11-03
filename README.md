@@ -4,9 +4,9 @@
 
 stream.gift provides crypto donations to streamers.
 
-This repository contains the backend code for the site & solana implementation of [stream.gift](https://stream.gift)
+This repository contains the backend code for the site & SUI implementation of [stream.gift](https://stream.gift)
 
-Built by [fakes1lent](https://github.com/fakes1lent) & [Nick Mura](https://github.com/nickmura)
+Built by [0xjimmy](https://github.com/0xjimmy) & [Nick Mura](https://github.com/nickmura)
 
 Questions? Email us at contact@stream.gift
 
@@ -15,8 +15,8 @@ Questions? Email us at contact@stream.gift
 - Nest.js
 - Prisma (PostgreSQL)
 - Axios
-- @solana/web3.js (as well as other dependancies)
-- QuickNode RPC
+- @mysten/sui.js (as well as other dependancies)
+- Blockvision RPC
 
 
-Deployed at [stream.gift](https://stream.gift)
+Deployed at [alpha.stream.gift](https://alpha.stream.gift)
