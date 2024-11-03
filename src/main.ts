@@ -22,6 +22,7 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'https://stream.gift',
+      'https://alpha.stream.gift',
       'https://www.stream.gift',
       ...(process.env.ENV === 'development' ? ['http://localhost:3000'] : []),
     ],
