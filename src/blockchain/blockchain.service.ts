@@ -307,15 +307,17 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       });
       if (!res.ok) console.log(res.status, res.statusText);
       res = await res.json(); // @ts-ignore
-      console.log(`checkSUINS (${address}):`, res?.result.data); //@ts-ignore
+      //@ts-ignore
       const nfts: CollectionItem[] = res?.result.data; //@ts-ignore
       const suins_index = nfts.findIndex(
         (nft) =>
           nft.collection ==
           `0xd22b24490e0bae52676651b4f56660a5ff8022a2576e0089f79b3c88d44e08f0::suins_registration::SuinsRegistration`,
       );
+      if (suins_index > -1) {
+        return nfts[suins_index].name ?? address;
 
-      if (suins_index > -1) return nfts[suins_index];
+      }
     } catch (error) {
       //@ts-ignore
       console.log(error?.message);
