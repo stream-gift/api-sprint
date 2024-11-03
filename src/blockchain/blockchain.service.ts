@@ -154,52 +154,64 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     const cleanSub = this.balanceWatcher({
       address,
       onBalance: async (coinBalance: CoinBalance) => {
-        this.logger.log(`Balance change for detected for address: ${address}`);
-
-        const donation = await this.prisma.donation.findFirst({
-          where: {
-            address: { address },
-            status: DonationStatus.PENDING,
-            pendingUntil: {
-              gte: new Date(),
-            },
-          },
-        });
-
-        if (!donation) {
+        try {
           this.logger.log(
-            `No pending donation found for address: ${address}, returning.`,
+            `Balance change for detected for address: ${address}`,
           );
-          this.stopListeningToAddress(address);
-          return;
-        }
+          const donation = await this.prisma.donation.findFirst({
+            where: {
+              address: { address },
+              status: DonationStatus.PENDING,
+              pendingUntil: {
+                gte: new Date(),
+              },
+            },
+          });
 
-        const balanceChange =
-          parseUnits(coinBalance.totalBalance, 0) - startBalance;
+          if (!donation) {
+            this.logger.log(
+              `No pending donation found for address: ${address}, returning.`,
+            );
+            this.stopListeningToAddress(address);
+            return;
+          }
 
-        if (balanceChange >= BigInt(Math.floor(donation.amountAtomic))) {
-          const getAccountTransactions = async (
-            client: SuiClient,
-            address: string,
-            cursor?: string,
-            acc: PaginatedTransactionResponse['data'] = [],
-          ): Promise<PaginatedTransactionResponse['data']> =>
-            (
-              await client.queryTransactionBlocks({
-                filter: { ToAddress: address },
-                cursor,
-              })
-            ).hasNextPage
-              ? getAccountTransactions(
-                  client,
-                  address,
-                  (
-                    await client.queryTransactionBlocks({
-                      filter: { ToAddress: address },
-                      cursor,
-                    })
-                  ).nextCursor,
-                  [
+          const balanceChange =
+            parseUnits(coinBalance.totalBalance, 0) - startBalance;
+
+          if (balanceChange >= BigInt(Math.floor(donation.amountAtomic))) {
+            const getAccountTransactions = async (
+              client: SuiClient,
+              address: string,
+              cursor?: string,
+              acc: PaginatedTransactionResponse['data'] = [],
+            ): Promise<PaginatedTransactionResponse['data']> =>
+              (
+                await client.queryTransactionBlocks({
+                  filter: { ToAddress: address },
+                  cursor,
+                })
+              ).hasNextPage
+                ? getAccountTransactions(
+                    client,
+                    address,
+                    (
+                      await client.queryTransactionBlocks({
+                        filter: { ToAddress: address },
+                        cursor,
+                      })
+                    ).nextCursor,
+                    [
+                      ...acc,
+                      ...(
+                        await client.queryTransactionBlocks({
+                          filter: { ToAddress: address },
+                          cursor,
+                        })
+                      ).data,
+                    ],
+                  )
+                : [
                     ...acc,
                     ...(
                       await client.queryTransactionBlocks({
@@ -207,74 +219,69 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
                         cursor,
                       })
                     ).data,
-                  ],
-                )
-              : [
-                  ...acc,
-                  ...(
-                    await client.queryTransactionBlocks({
-                      filter: { ToAddress: address },
-                      cursor,
-                    })
-                  ).data,
-                ];
+                  ];
 
-          // All transaction digests for depo address
-          const transactionDigests = await getAccountTransactions(
-            this.client,
-            address,
-          );
-          // Query Balance Changes and timestamp
-          const txs = await this.client.multiGetTransactionBlocks({
-            digests: transactionDigests.map((x) => x.digest),
-            options: { showBalanceChanges: true },
-          });
-          if (txs.length === 0 || txs[0].errors) return;
+            // All transaction digests for depo address
+            const transactionDigests = await getAccountTransactions(
+              this.client,
+              address,
+            );
+            // Query Balance Changes and timestamp
+            const txs = await this.client.multiGetTransactionBlocks({
+              digests: transactionDigests.map((x) => x.digest),
+              options: { showBalanceChanges: true },
+            });
+            if (txs.length === 0 || txs[0].errors) return;
 
-          // Find largest SUI transfer during donation period
-          // Error if none found
-          const validAfter = donation.pendingUntil.getTime() - 15 * 60 * 1000;
-          const potentialTx = txs.reduce(
-            (max, tx) => {
-              if (!tx.timestampMs || !tx.balanceChanges || tx.errors)
-                return max;
-              if (Number(tx.timestampMs) < validAfter) return max;
+            // Find largest SUI transfer during donation period
+            // Error if none found
+            const validAfter = donation.pendingUntil.getTime() - 15 * 60 * 1000;
+            const potentialTx = txs.reduce(
+              (max, tx) => {
+                if (!tx.timestampMs || !tx.balanceChanges || tx.errors)
+                  return max;
+                if (Number(tx.timestampMs) < validAfter) return max;
 
-              const balChange = tx.balanceChanges.find(
-                (x) =>
-                  x.owner['AddressOwner'] &&
-                  x.owner['AddressOwner'] === address &&
-                  x.coinType === '0x2::sui::SUI',
+                const balChange = tx.balanceChanges.find(
+                  (x) =>
+                    x.owner['AddressOwner'] &&
+                    x.owner['AddressOwner'] === address &&
+                    x.coinType === '0x2::sui::SUI',
+                );
+                if (!balChange) return max;
+
+                const size = BigInt(balChange.amount);
+                return max.size > size ? max : { tx, size };
+              },
+              { size: 0n, tx: undefined } as {
+                size: bigint;
+                tx: undefined | SuiTransactionBlockResponse;
+              },
+            );
+
+            if (potentialTx.tx) {
+              this.logger.log(
+                `Donation ${donation.id} found for address: ${address}`,
               );
-              if (!balChange) return max;
-
-              const size = BigInt(balChange.amount);
-              return max.size > size ? max : { tx, size };
-            },
-            { size: 0n, tx: undefined } as {
-              size: bigint;
-              tx: undefined | SuiTransactionBlockResponse;
-            },
-          );
-
-          if (potentialTx.tx) {
-            this.logger.log(
-              `Donation ${donation.id} found for address: ${address}`,
-            );
-            this.logger.log(`Donation ${donation.id} is valid. Processing...`);
-            const senderAddress = potentialTx.tx.balanceChanges.find(
-              (x) => x.coinType === '0x2::sui::SUI' && BigInt(x.amount) < 0n,
-            )?.owner['AddressOwner'];
-            const senderDomainName =
-              await this.getDomainNameFromAddress(senderAddress);
-            await this.donationService.processDonation(
-              donation.id,
-              potentialTx.tx.digest,
-              senderAddress,
-              senderDomainName,
-            );
-            this.stopListeningToAddress(address);
+              this.logger.log(
+                `Donation ${donation.id} is valid. Processing...`,
+              );
+              const senderAddress = potentialTx.tx.balanceChanges.find(
+                (x) => x.coinType === '0x2::sui::SUI' && BigInt(x.amount) < 0n,
+              )?.owner['AddressOwner'];
+              const senderDomainName =
+                await this.getDomainNameFromAddress(senderAddress);
+              await this.donationService.processDonation(
+                donation.id,
+                potentialTx.tx.digest,
+                senderAddress,
+                senderDomainName,
+              );
+              this.stopListeningToAddress(address);
+            }
           }
+        } catch (error) {
+          console.warn('Error Fetching Balance Change', error);
         }
       },
     });
